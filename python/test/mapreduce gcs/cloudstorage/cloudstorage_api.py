@@ -279,7 +279,7 @@ def listbucket(path_prefix, marker=None, prefix=None, max_keys=None,
 # pylint: disable=too-many-locals, too-many-branches, too-many-statements
 def compose(list_of_files, destination_file, files_metadata=None,
             content_type=None, retry_params=None, _account_id=None):
-  """Runs the GCS Compose on the given files.
+  """Runs the GCS compose on the given files.
 
   Merges between 2 and 32 files into one file. Composite files may even
   be built from other existing composites, provided that the total
@@ -368,10 +368,10 @@ def _validate_compose_list(destination_file, file_list,
 
   if list_len > number_of_files:
     raise ValueError(
-          'Compose attempted to create composite with too many'
+          'compose attempted to create composite with too many'
            '(%i) components; limit is (%i).' % (list_len, number_of_files))
   if list_len <= 1:
-    raise ValueError('Compose operation requires at'
+    raise ValueError('compose operation requires at'
                      ' least two components; %i provided.' % list_len)
 
   if files_metadata is None:
@@ -384,7 +384,7 @@ def _validate_compose_list(destination_file, file_list,
   for source_file, meta_data in itertools.izip_longest(file_list,
                                                        files_metadata):
     if not isinstance(source_file, basestring):
-      raise TypeError('Each item of file_list must be a string ' + str(type(source_file)))
+      raise TypeError('Each item of file_list must be a string')
     if source_file.startswith('/'):
       logging.warn('Detected a "/" at the start of the file, '
                    'Unless the file name contains a "/" it '

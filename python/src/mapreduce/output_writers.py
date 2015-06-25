@@ -1168,7 +1168,7 @@ class _GoogleCloudStorageKeyValueOutputWriter(
     proto.set_value(value)
     GoogleCloudStorageRecordOutputWriter.write(self, proto.Encode())
 
-
+# pylint: disable=abstract-method
 class GoogleCloudStorageMergedOutputWriter(
         GoogleCloudStorageConsistentOutputWriter):
   """Output writer to Google Cloud Storage using the cloudstorage library.
@@ -1232,7 +1232,6 @@ class GoogleCloudStorageMergedOutputWriter(
           files = map(cloudstorage.open, file_names)
           with cloudstorage.open(output_file_name, 'w',
                                  content_type=content_type) as gcs:
-            # pylint: disable=star-args
             for line in heapq.merge(*files):
               gcs.write(line)
         else:
@@ -1253,7 +1252,7 @@ class GoogleCloudStorageMergedOutputWriter(
                                   + str(temp_file_counter))
                 compose(segment, temp_file_name,
                         content_type=content_type)
-                file_names.append(temp_file_name[len(bucket_name) + 2:])
+                file_names.append(str(temp_file_name[len(bucket_name) + 2:]))
                 temp_file_counter += 1
                 temp_list.append(temp_file_name)
               else:

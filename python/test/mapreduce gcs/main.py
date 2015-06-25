@@ -39,7 +39,7 @@ WORK_FOLDER = '/MR-GCS-Tests'
 OUTPUT_FOLDER = 'MR-GCS-Tests/Results/'
 FILE_PATH = '/' + BUCKET_NAME + WORK_FOLDER + '/Test.txt'
 ZIP_PATH = '/' + BUCKET_NAME + WORK_FOLDER + '/Test.zip'
-STRESS_TEST_PATH = '/' + BUCKET_NAME + WORK_FOLDER + '/Stressc.txt'
+STRESS_TEST_PATH = '/' + BUCKET_NAME + WORK_FOLDER + '/Stressb.txt'
 
 STRESS_TEST_WORD_SIZE = 1024
 STRESS_TEST_CHAR_BASE = list(string.ascii_letters)
@@ -89,7 +89,7 @@ class MainPage(webapp2.RequestHandler):
     number_of_stress_files = int(self.request.get('stress_size', 1))
     job = self.request.get('job')
     email = self.request.get('email', None)
-    pipe_output = []
+    pipeline = ''
     blob_output = []
     list_of_chars = []
     for i in range(number_of_chars):
@@ -107,12 +107,9 @@ class MainPage(webapp2.RequestHandler):
                   number_of_shards, email=email, base_url=self.request.url,
                   sort_output=sort_output)
       pipeline.start()
-      blob_output = ('<p><A HREF="/blobstore/' +
-                        blobstore.create_gs_key('/gs' + FILE_PATH) +
-                        '/File.txt">File Check</A></p>')
-      pipe_output = ('<p><A HREF="' + pipeline.base_path + '/status?root='
-                    + pipeline.pipeline_id +
-                    "' target='_blank'>MR Watch File</A></p>")
+      job_name = 'Monitor single File Test'
+      blob_output.append(FILE_PATH)
+      blob_output.append(destination)
     if 'ZipTestWhole' == job or 'ZipTestLine' == job:
       logging.info('Creating test zip')
       for _ in range(number_of_zip_files):
@@ -124,11 +121,12 @@ class MainPage(webapp2.RequestHandler):
               logging.info('Creating File: %s ', file_name)
               zipit.writestr(file_name, fill_file(list_of_chars),
                              compress_type=zipfile.ZIP_STORED)
-      blob_output = ('<p><A HREF="/blobstore/' +
-                      blobstore.create_gs_key('/gs' + ZIP_PATH) +
-                      '/Zip.zip">Zip Check</A></p>')
+      blob_output.append(ZIP_PATH)
+
       if 'ZipTestWhole' == job:
-        destination = 'ZipFile.txt'
+        job_name = 'Monitor Zip Whole Test'
+        destination = 'ZipFile.zip'
+        blob_output.append(destination)
         pipeline = Mapreduce('Zip Input', ZIP_PATH, destination,
                              'mapreduce.input_readers'
                              '.GoogleCloudStorageZipInputReader',
@@ -137,12 +135,10 @@ class MainPage(webapp2.RequestHandler):
                              sort_output=sort_output)
         pipeline.start()
 
-        pipe_output = ('<p><A HREF="' + pipeline.base_path
-                      + '/status?root=' + pipeline.pipeline_id
-                      + '" target="_blank">MR Watch Zip Input</A></p>')
-
       if 'ZipTestLine' == job:
-        destination = 'ZipLine.txt'
+        job_name = 'Monitor Zip Line Test'
+        destination = 'ZipLine.zip'
+        blob_output.append(destination)
         pipeline = Mapreduce('Zip Line', ZIP_PATH, destination,
                              'mapreduce.input_readers.'
                              'GoogleCloudStorageZipLineInputReader',
@@ -150,34 +146,42 @@ class MainPage(webapp2.RequestHandler):
                              base_url=self.request.url,
                              sort_output=sort_output)
         pipeline.start()
-        pipe_output = ('<p><A HREF="' + pipeline.base_path
-                       + '/status?root=' + pipeline.pipeline_id
-                        + '" target="_blank">MR Watch Zip Line</A></p>')
 
     if 'StressTest' == job:
       logging.info('Creating stress test file')
       with cloudstorage.open(STRESS_TEST_PATH, 'w',
                              content_type='text/plain') as gcs:
         for _ in range(1024):
-          gcs.write('\r\n' * 1024)
-      blob_output = ('<p><A HREF="/blobstore/' +
-                    blobstore.create_gs_key('/gs' + STRESS_TEST_PATH)
-                     + '/Stress_File.txt">Stress File Check</A></p>')
+          gcs.write('\n\r' * 1024)
+      blob_output.append(STRESS_TEST_PATH)
+      job_name = "Monitor Stress Test"
+      destination = 'Stressb.txt'
+      blob_output.append(destination)
       pipeline = MapperOutputWriterStressTest(number_of_stress_files,
                                               email=email,
                                               base_url=self.request.url,
-                                              sort_output=sort_output)
-      pipeline.start()
-      pipe_output = ('</p><A HREF="' + pipeline.base_path + '/status?root='
-                    + pipeline.pipeline_id +
-                    '" target="_blank">MR Stress Test</A>')
+                                              sort_output=sort_output,
+                                              destination=destination)
+      pipeline.start(queue_name='mapreduce2')
+
     # pylint: disable=no-member
     self.response.out.write(jinja2.Environment(loader=jinja2.
                                                FileSystemLoader('templates'),
                                                autoescape=True)
-                            .get_template('index.html')
-                            .render({'pipe_output':pipe_output,
-                                     'blob_output':blob_output}))
+                      .get_template('index.html')
+                      .render({'pipe_output':('<p><A HREF="%s/status?'
+                                              'root=%s" target="_blank">'
+                                              '%s</A></p>') %
+                                                (pipeline.base_path,
+                                                 pipeline.pipeline_id,
+                                                 job_name),
+                               'blob_output':('<p><A HREF="/blobstore/'
+                                              '%s/%s" target="_blank">'
+                                              'File Check</A></p>') %
+                                               (blobstore.create_gs_key('/gs' +
+                                               blob_output[0]), blob_output[1])
+
+                               }))
 
 
 # pylint: disable=too-few-public-methods
@@ -203,6 +207,7 @@ class GCSServingHandler(blobstore_handlers.BlobstoreDownloadHandler):
       self.send_blob(blob_info, save_as=True)
 
 
+# pylint: disable=abstract-method
 class Mapreduce(base_handler.PipelineBase):
   """
   General Mapreduce call
@@ -250,9 +255,9 @@ class Mapreduce(base_handler.PipelineBase):
 
 class MapperOutputWriterStressTest(base_handler.PipelineBase):
   """ Stress test for output writer """
-  # pylint: disable=arguments-differ, unused-argument
+  # pylint: disable=arguments-differ, unused-argument, too-many-arguments
   def run(self, number_of_stress_files=1, email=None,
-          base_url=None, sort_output=True):
+          base_url=None, sort_output=True, destination='Stressb.txt'):
     """
     Based of selection will generate a number of gigs of output to make
       sure the output writer can handle large outputs
@@ -269,12 +274,12 @@ class MapperOutputWriterStressTest(base_handler.PipelineBase):
       'mapreduce.output_writers.GoogleCloudStorageMergedOutputWriter',
       params={'input_reader' : {
                            'bucket_name' : BUCKET_NAME,
-                           'objects' : [STRESS_TEST_PATH[len(BUCKET_NAME) + 2:]]
+                           'objects' : [str(STRESS_TEST_PATH[len(BUCKET_NAME) + 2:])]
                                          * number_of_stress_files
                            },
                 'output_writer' : {'bucket_name' : BUCKET_NAME,
                                     'naming_format' : OUTPUT_FOLDER
-                                    + 'Stressc.txt',
+                                    + destination,
                                     'sort_output' : sort_output,
                                     'content_type' : 'text/plain'}
                        },

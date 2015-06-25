@@ -2796,7 +2796,7 @@ class GoogleCloudStorageLineInputReader(InputReader):
       shards_per_file = 1
     chunks = []
     for file_stats in all_file_names:
-      file_name = file_stats.file_name
+      file_name = file_stats.filename
       file_size = file_stats.st_size
       file_chunk_size = file_size // shards_per_file
       for i in xrange(shards_per_file - 1):
@@ -3059,8 +3059,8 @@ class GoogleCloudStorageZipInputReader(InputReader):
     sub_files = {}
     total_size = 0
     for file_name in all_file_names:
-      logging.info(file_name.file_name)
-      zip_input = zipfile.ZipFile(cloudstorage.open(file_name.file_name))
+      logging.info(file_name.filename)
+      zip_input = zipfile.ZipFile(cloudstorage.open(file_name.filename))
       sub_files[file_name] = zip_input.infolist()
       total_size += sum(x.file_size for x in sub_files[file_name])
 
@@ -3077,13 +3077,13 @@ class GoogleCloudStorageZipInputReader(InputReader):
         next_file_index += 1
         current_shard_size += fileinfo.file_size
         if current_shard_size >= size_per_shard:
-          readers.append(cls(file_name.file_name, start_file_index,
+          readers.append(cls(file_name.filename, start_file_index,
                              next_file_index, buffer_size=buffer_size,
                              delimiter=delimiter, account_id=account_id))
           current_shard_size = 0
           start_file_index = next_file_index
       if current_shard_size != 0:
-        readers.append(cls(file_name.file_name, start_file_index,
+        readers.append(cls(file_name.filename, start_file_index,
                            next_file_index, buffer_size=buffer_size,
                            delimiter=delimiter, account_id=account_id))
     return readers
@@ -3145,7 +3145,7 @@ class GoogleCloudStorageZipInputReader(InputReader):
     entry = self._entries.pop()
     self._start_index += 1
     return (((self._file_name, self._zip.infolist()[self._start_index - 1]
-              .file_name)), self._read(entry))
+              .filename)), self._read(entry))
 
   def _read(self, entry):
     """Read entry content.
@@ -3156,7 +3156,7 @@ class GoogleCloudStorageZipInputReader(InputReader):
       Entry content as string.
     """
     start_time = time.time()
-    content = self._zip.read(entry.file_name)
+    content = self._zip.read(entry.filename)
 
     ctx = context.get()
     if ctx:
@@ -3353,7 +3353,7 @@ class GoogleCloudStorageZipLineInputReader(InputReader):
     sub_files = {}
     total_size = 0
     for file_name in all_file_names:
-      zip_input = zipfile.ZipFile(cloudstorage.open(file_name.file_name))
+      zip_input = zipfile.ZipFile(cloudstorage.open(file_name.filename))
       sub_files[file_name] = zip_input.infolist()
       total_size += sum(x.file_size for x in sub_files[file_name])
 
@@ -3373,14 +3373,14 @@ class GoogleCloudStorageZipLineInputReader(InputReader):
         next_file_index += 1
         current_shard_size += fileinfo.file_size
         if current_shard_size >= size_per_shard:
-          readers.append(cls(file_name.file_name, start_file_index,
+          readers.append(cls(file_name.filename, start_file_index,
                              next_file_index, buffer_size=buffer_size,
                              delimiter=delimiter, account_id=account_id))
 
           current_shard_size = 0
           start_file_index = next_file_index
       if current_shard_size != 0:
-        readers.append(cls(file_name.file_name, start_file_index,
+        readers.append(cls(file_name.filename, start_file_index,
                            next_file_index, buffer_size=buffer_size,
                            delimiter=delimiter, account_id=account_id))
 
@@ -3406,7 +3406,7 @@ class GoogleCloudStorageZipLineInputReader(InputReader):
       raise StopIteration()
     if not self._entry:
       self._entry = self._entries.pop()
-    file_name = self._entry.file_name
+    file_name = self._entry.filename
     value = self._zip.read(file_name)
     self._filestream = StringIO.StringIO(value)
     if self._initial_offset:
