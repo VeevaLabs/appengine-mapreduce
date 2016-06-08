@@ -28,10 +28,10 @@ __all__ = [
     "COUNTER_IO_WRITE_BYTES",
     "COUNTER_IO_WRITE_MSEC",
     "OutputWriter",
-    "GCSRecordsPool"
+    "GCSRecordsPool",
+	  "GoogleCloudStorageMergedOutputWriter"
     ]
 
-# pylint: disable=g-bad-name
 # pylint: disable=protected-access
 
 import cStringIO
@@ -41,6 +41,7 @@ import pickle
 import random
 import string
 import time
+import heapq
 
 from mapreduce import context
 from mapreduce import errors
@@ -51,16 +52,17 @@ from mapreduce import operation
 from mapreduce import records
 from mapreduce import shard_life_cycle
 
-# pylint: disable=g-import-not-at-top
 # TODO(user): Cleanup imports if/when cloudstorage becomes part of runtime.
 try:
   # Check if the full cloudstorage package exists. The stub part is in runtime.
+  # pylint: disable=invalid-name
   cloudstorage = None
   import cloudstorage
   if hasattr(cloudstorage, "_STUB"):
     cloudstorage = None
   # "if" is needed because apphosting/ext/datastore_admin:main_test fails.
   if cloudstorage:
+    # pylint: disable=import-error
     from cloudstorage import cloudstorage_api
     from cloudstorage import errors as cloud_errors
 except ImportError:
@@ -73,6 +75,14 @@ if cloudstorage is None:
     from cloudstorage import cloudstorage_api
   except ImportError:
     pass  # CloudStorage library really not available
+
+# Checks if the cloud storage library has the compose function,
+  # otherwise it imports the stub
+# pylint: disable=import-error
+if hasattr(cloudstorage, "compose"):
+  from cloudstorage import compose
+else:
+  from mapreduce.cloudstorage_compose_stub import compose
 
 
 # Counter name for number of bytes written.
@@ -1158,5 +1168,125 @@ class _GoogleCloudStorageKeyValueOutputWriter(
     proto.set_value(value)
     GoogleCloudStorageRecordOutputWriter.write(self, proto.Encode())
 
+# pylint: disable=abstract-method
+class GoogleCloudStorageMergedOutputWriter(
+        GoogleCloudStorageConsistentOutputWriter):
+  """Output writer to Google Cloud Storage using the cloudstorage library.
+
+  Extends the GoogleCloudStorageConsistentOutputWriter to merge all the
+    outputs from the shards into a single file.
+  """
+  SORT_OUTPUT_PARAM = 'sort_output'
+
+  @classmethod
+  def validate(cls, mapper_spec):
+    """Validates input variables to the output writer.
+
+    Extends the base validate to add the sort output parameter.
+      Ensures its a bool.
+
+    Raises:
+      BadWriterParamsError: If any paramter (incuding the sort) is invalid.
+    """
+    super(GoogleCloudStorageMergedOutputWriter, cls).validate(mapper_spec)
+    writer_spec = cls.get_params(mapper_spec, allow_old=False)
+
+    if cls.SORT_OUTPUT_PARAM in writer_spec:
+      if not isinstance(writer_spec[cls.SORT_OUTPUT_PARAM], bool):
+        raise errors.BadWriterParamsError(
+            '%s must be a bool' %
+            cls.SORT_OUTPUT_PARAM)
+
+  @classmethod
+  # pylint: disable=too-many-locals
+  def get_filenames(cls, mapreduce_state):
+    """Merges all shards output into a single file then returns the file path.
+
+    Exteneds the base get_filenames to merge all the shards output. Based off
+      a flag set by the calling script it will either sort the data or simply
+      merge. Sort is set to True by default to imulate other output writers.
+      To account for restarts it checks to see if first file exits. If it does
+      then it still needs to merge the data. Otherwise it skips to the clean
+      up phase.
+    """
+    bucket_name = (mapreduce_state.mapreduce_spec
+                   .mapper.params['output_writer'][cls.BUCKET_NAME_PARAM])
+
+    file_names = super(GoogleCloudStorageMergedOutputWriter,
+                       cls).get_filenames(mapreduce_state)
+
+    output_file_name = ('/' + bucket_name + '/' + mapreduce_state
+                        .mapreduce_spec.mapper.params['output_writer']
+                        [cls.NAMING_FORMAT_PARAM])
+    content_type = (mapreduce_state.mapreduce_spec.mapper
+                    .params['output_writer'].get(cls.CONTENT_TYPE_PARAM, None))
+    if len(file_names) > 0:
+      try:
+        # Checks if the first file has been deleted.
+          # If it has it will skip the merge
+        with cloudstorage.open(file_names[0], 'r'):
+          pass
+        if (mapreduce_state.mapreduce_spec.mapper.params['output_writer']
+            .get(cls.SORT_OUTPUT_PARAM, True)):
+          # pylint: disable=bad-builtin
+          files = map(cloudstorage.open, file_names)
+          with cloudstorage.open(output_file_name, 'w',
+                                 content_type=content_type) as gcs:
+            for line in heapq.merge(*files):
+              gcs.write(line)
+        else:
+          # temp storage for the file_names that store the merged segments of 32
+          temp_list = []
+          temp_file_suffix = '____MergeTempFile_'
+          file_names = [file_name[len(bucket_name) + 2:]
+                        for file_name in file_names]
+          # Compose can only take 32 files at a time
+          if len(file_names) > 32:
+            temp_file_counter = 0
+            segments_list = [file_names[i:i + 32]
+                             for i in range(0, len(file_names), 32)]
+            file_names = []
+            for segment in segments_list:
+              if len(segment) > 1:
+                temp_file_name = (output_file_name + temp_file_suffix
+                                  + str(temp_file_counter))
+                compose(segment, temp_file_name,
+                        content_type=content_type)
+                file_names.append(str(temp_file_name[len(bucket_name) + 2:]))
+                temp_file_counter += 1
+                temp_list.append(temp_file_name)
+              else:
+                file_names.append(segment[0])
+          # There will always be 32 or less files to merge at this point
+          file_names = [str(f) for f in file_names]
+          compose(file_names, output_file_name, content_type=content_type)
+          # Grab all temp files that were created during the merging
+          temp_list = cloudstorage.listbucket(output_file_name
+                                              + temp_file_suffix)
+          # Delete all temporary merge-files for the segments of 32 (if any)
+          for item in temp_list:
+            try:
+              cloudstorage.delete(item.filename)
+            except cloud_errors.NotFoundError:
+              pass
+      except cloud_errors.NotFoundError:
+        pass
+
+    return output_file_name
+
+  # pylint: disable=too-many-arguments
+  @classmethod
+  def _generate_filename(cls, writer_spec, name, job_id, num,
+             attempt=None, seg_index=None):
+    """Generate file names for each shard
+
+    Generates file names for each shard based off the job id,
+      file_name and shard number
+    """
+    file_name = super(GoogleCloudStorageMergedOutputWriter,
+                       cls)._generate_filename(writer_spec, name, job_id, num,
+             attempt, seg_index)
+    file_name = '%s/%s__%i' % (str(job_id), file_name, num)
+    return file_name
 
 GoogleCloudStorageKeyValueOutputWriter = _GoogleCloudStorageKeyValueOutputWriter
