@@ -891,12 +891,14 @@ class GoogleCloudStorageConsistentOutputWriter(
   # Slice retries don't cause inconsitent and/or duplicate entries to be written
   # to the mainfile (rewriting tmpfile is an idempotent operation).
 
+  TMP_PREFIX = 'tmp_prefix'
+
   _JSON_STATUS = "status"
   _RAND_BITS = 128
   _REWRITE_BLOCK_SIZE = 1024 * 256
   _REWRITE_MR_TMP = "gae_mr_tmp"
-  _TMPFILE_PATTERN = _REWRITE_MR_TMP + "/$id-tmp-$shard-$random"
-  _TMPFILE_PREFIX = _REWRITE_MR_TMP + "/$id-tmp-$shard-"
+  _TMPFILE_PATTERN = "/$id-tmp-$shard-$random"
+  _TMPFILE_PREFIX = "/$id-tmp-$shard-"
 
   def __init__(self, status):
     """Initialize a GoogleCloudStorageConsistentOutputWriter instance.
@@ -971,8 +973,10 @@ class GoogleCloudStorageConsistentOutputWriter(
     #
     # We used mapreduce id, shard number and attempt and 128 random bits to make
     # collisions virtually impossible.
+    prefix = status.writer_spec.get(
+      cls.TMP_PREFIX, cls._REWRITE_MR_TMP)
     tmpl = string.Template(cls._TMPFILE_PATTERN)
-    filename = tmpl.substitute(
+    filename = prefix + tmpl.substitute(
         id=status.mapreduce_id, shard=status.shard,
         random=random.getrandbits(cls._RAND_BITS))
 
@@ -1031,8 +1035,10 @@ class GoogleCloudStorageConsistentOutputWriter(
     """
     # Try to remove garbage (if any). Note that listbucket is not strongly
     # consistent so something might survive.
+    tmp_prefix = writer_spec.get(
+        self.TMP_PREFIX, self._REWRITE_MR_TMP)
     tmpl = string.Template(self._TMPFILE_PREFIX)
-    prefix = tmpl.substitute(
+    prefix = tmp_prefix + tmpl.substitute(
         id=self.status.mapreduce_id, shard=self.status.shard)
     bucket = self._get_tmp_gcs_bucket(writer_spec)
     account_id = self._get_tmp_account_id(writer_spec)
@@ -1259,6 +1265,7 @@ class GoogleCloudStorageMergedOutputWriter(
                 file_names.append(segment[0])
           # There will always be 32 or less files to merge at this point
           file_names = [str(f) for f in file_names]
+
           compose(file_names, output_file_name, content_type=content_type)
           # Grab all temp files that were created during the merging
           temp_list = cloudstorage.listbucket(output_file_name
@@ -1274,19 +1281,5 @@ class GoogleCloudStorageMergedOutputWriter(
 
     return output_file_name
 
-  # pylint: disable=too-many-arguments
-  @classmethod
-  def _generate_filename(cls, writer_spec, name, job_id, num,
-             attempt=None, seg_index=None):
-    """Generate file names for each shard
-
-    Generates file names for each shard based off the job id,
-      file_name and shard number
-    """
-    file_name = super(GoogleCloudStorageMergedOutputWriter,
-                       cls)._generate_filename(writer_spec, name, job_id, num,
-             attempt, seg_index)
-    file_name = '%s/%s__%i' % (str(job_id), file_name, num)
-    return file_name
-
 GoogleCloudStorageKeyValueOutputWriter = _GoogleCloudStorageKeyValueOutputWriter
+
