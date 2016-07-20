@@ -899,6 +899,7 @@ class GoogleCloudStorageConsistentOutputWriter(
   _REWRITE_MR_TMP = "gae_mr_tmp"
   _TMPFILE_PATTERN = "/$id-tmp-$shard-$random"
   _TMPFILE_PREFIX = "/$id-tmp-$shard-"
+  _MERGE_TMPFILE_PREFIX = "/$id-mrg"
 
   def __init__(self, status):
     """Initialize a GoogleCloudStorageConsistentOutputWriter instance.
@@ -1235,11 +1236,13 @@ class GoogleCloudStorageMergedOutputWriter(
         if (mapreduce_state.mapreduce_spec.mapper.params['output_writer']
             .get(cls.SORT_OUTPUT_PARAM, True)):
           # pylint: disable=bad-builtin
-          files = map(cloudstorage.open, file_names)
+          files = [cloudstorage.open(f) for f in file_names]
           with cloudstorage.open(output_file_name, 'w',
                                  content_type=content_type) as gcs:
             for line in heapq.merge(*files):
               gcs.write(line)
+
+          temp_list = file_names
         else:
           # temp storage for the file_names that store the merged segments of 32
           temp_list = []
@@ -1268,18 +1271,39 @@ class GoogleCloudStorageMergedOutputWriter(
 
           compose(file_names, output_file_name, content_type=content_type)
           # Grab all temp files that were created during the merging
-          temp_list = cloudstorage.listbucket(output_file_name
-                                              + temp_file_suffix)
-          # Delete all temporary merge-files for the segments of 32 (if any)
-          for item in temp_list:
-            try:
-              cloudstorage.delete(item.filename)
-            except cloud_errors.NotFoundError:
-              pass
+          temp_list = [f.filename
+                       for f in cloudstorage.listbucket(output_file_name
+                                              + temp_file_suffix)]
+
+        # Delete all temporary merge-files for the segments of 32 (if any)
+        for item in temp_list:
+          try:
+            cloudstorage.delete(item)
+          except cloud_errors.NotFoundError:
+            pass
+
       except cloud_errors.NotFoundError:
         pass
 
     return output_file_name
+
+  # pylint: disable=too-many-arguments
+  @classmethod
+  def _generate_filename(cls, writer_spec, name, job_id, num,
+             attempt=None, seg_index=None):
+    """Generate file names for each shard
+
+    Generates file names for each shard based off the job id,
+      file_name and shard number
+    """
+    tmp_prefix = writer_spec.get(cls.TMP_PREFIX, cls._REWRITE_MR_TMP)
+    tmpl = string.Template(cls._MERGE_TMPFILE_PREFIX)
+    prefix = tmp_prefix + tmpl.substitute(id=job_id, shard=num)
+    file_name = super(GoogleCloudStorageMergedOutputWriter,
+                       cls)._generate_filename(writer_spec, name, job_id, num,
+             attempt, seg_index)
+    file_name = '%s/%s__%i' % (prefix, file_name, num)
+    return file_name
 
 GoogleCloudStorageKeyValueOutputWriter = _GoogleCloudStorageKeyValueOutputWriter
 
