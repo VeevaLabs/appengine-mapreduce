@@ -89,6 +89,7 @@ import struct
 from mapreduce.third_party import crc32c
 from mapreduce import errors
 
+log = logging.getLogger(__name__)
 
 # pylint: disable=g-bad-name
 
@@ -301,26 +302,26 @@ class RecordsReader(object):
           self.__sync()
         elif record_type == _RECORD_TYPE_FULL:
           if data is not None:
-            logging.warning(
+            log.warning(
                 "Ordering corruption: Got FULL record while already "
                 "in a chunk at offset %d", last_offset)
           return chunk
         elif record_type == _RECORD_TYPE_FIRST:
           if data is not None:
-            logging.warning(
+            log.warning(
                 "Ordering corruption: Got FIRST record while already "
                 "in a chunk at offset %d", last_offset)
           data = chunk
         elif record_type == _RECORD_TYPE_MIDDLE:
           if data is None:
-            logging.warning(
+            log.warning(
                 "Ordering corruption: Got MIDDLE record before FIRST "
                 "record at offset %d", last_offset)
           else:
             data += chunk
         elif record_type == _RECORD_TYPE_LAST:
           if data is None:
-            logging.warning(
+            log.warning(
                 "Ordering corruption: Got LAST record but no chunk is in "
                 "progress at offset %d", last_offset)
           else:
@@ -332,7 +333,7 @@ class RecordsReader(object):
               "Unsupported record type: %s" % record_type)
 
       except errors.InvalidRecordError, e:
-        logging.warning("Invalid record encountered at %s (%s). Syncing to "
+        log.warning("Invalid record encountered at %s (%s). Syncing to "
                         "the next block", last_offset, e)
         data = None
         self.__sync()

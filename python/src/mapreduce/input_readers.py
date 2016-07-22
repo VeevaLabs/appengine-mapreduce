@@ -77,6 +77,8 @@ from mapreduce import property_range
 from mapreduce import records
 from mapreduce import util
 
+log = logging.getLogger(__name__)
+
 # TODO(user): Cleanup imports if/when cloudstorage becomes part of runtime.
 try:
   # Check if the full cloudstorage package exists. The stub part is in runtime.
@@ -470,7 +472,7 @@ class AbstractDatastoreInputReader(InputReader):
           random_keys = ds_query_with_filters.Get(shard_count *
                                                   oversampling_factor)
         except db.NeedIndexError, why:
-          logging.warning('Need to add an index for optimal mapreduce-input'
+          log.warning('Need to add an index for optimal mapreduce-input'
                           ' splitting:\n%s' % why)
           # We'll try again without the filter.  We hope the filter
           # will filter keys uniformly across the key-name space!
@@ -607,7 +609,7 @@ class RawDatastoreInputReader(AbstractDatastoreInputReader):
     params = _get_params(mapper_spec)
     entity_kind = params[cls.ENTITY_KIND_PARAM]
     if "." in entity_kind:
-      logging.warning(
+      log.warning(
           ". detected in entity kind %s specified for reader %s."
           "Assuming entity kind contains the dot.",
           entity_kind, cls.__name__)
@@ -886,7 +888,7 @@ class _OldAbstractDatastoreInputReader(InputReader):
   @classmethod
   def _get_raw_entity_kind(cls, entity_kind):
     if "." in entity_kind:
-      logging.warning(
+      log.warning(
           ". detected in entity kind %s specified for reader %s."
           "Assuming entity kind contains the dot.",
           entity_kind, cls.__name__)
@@ -2537,7 +2539,7 @@ class _GoogleCloudStorageInputReader(InputReader):
           raise errors.FailJobError(
               "File missing in GCS, aborting: %s" % filename)
         # Move on otherwise.
-        logging.warning("File %s may have been removed. Skipping file.",
+        log.warning("File %s may have been removed. Skipping file.",
                         filename)
 
   def __str__(self):
@@ -2855,7 +2857,7 @@ class GoogleCloudStorageLineInputReader(InputReader):
           all_file_names.append(cloudstorage
                                .stat(('/%s/%s') % (bucket, file_name)))
         except cloudstorage.NotFoundError:
-          logging.warning('File /%s/%s may have been removed. Skipping file.',
+          log.warning('File /%s/%s may have been removed. Skipping file.',
             bucket, file_name)
     shard_count = min(cls._MAX_SHARD_COUNT, mapper_spec.shard_count)
     try:
@@ -2940,7 +2942,7 @@ class GoogleCloudStorageLineInputReader(InputReader):
       self._file_reader = cloudstorage.open(file_name, **options)
       self._file_reader.seek(start_position)
     except cloudstorage.NotFoundError:
-      logging.warning('File %s may have been removed. Skipping file.',
+      log.warning('File %s may have been removed. Skipping file.',
             file_name)
       raise StopIteration()
     self._end_position = end_position
@@ -3115,7 +3117,7 @@ class GoogleCloudStorageZipInputReader(InputReader):
           all_file_names.append(cloudstorage
                                .stat(('/%s/%s') % (bucket, file_name)))
         except cloudstorage.NotFoundError:
-          logging.warning('File /%s/%s may have been removed. Skipping file.',
+          log.warning('File /%s/%s may have been removed. Skipping file.',
             bucket, file_name)
 
     shard_count = min(cls._MAX_SHARD_COUNT, mapper_spec.shard_count)
@@ -3129,7 +3131,7 @@ class GoogleCloudStorageZipInputReader(InputReader):
     sub_files = {}
     total_size = 0
     for file_name in all_file_names:
-      logging.info(file_name.filename)
+      log.info(file_name.filename)
       zip_input = zipfile.ZipFile(cloudstorage.open(file_name.filename))
       sub_files[file_name] = zip_input.infolist()
       total_size += sum(x.file_size for x in sub_files[file_name])
@@ -3190,7 +3192,7 @@ class GoogleCloudStorageZipInputReader(InputReader):
       # pylint: disable=star-args
       self._reader = cloudstorage.open(file_name, **options)
     except cloudstorage.NotFoundError:
-      logging.warning('File /%s may have been removed. Skipping file.',
+      log.warning('File /%s may have been removed. Skipping file.',
             file_name)
     self._zip = None
     self._entries = None
@@ -3409,7 +3411,7 @@ class GoogleCloudStorageZipLineInputReader(InputReader):
           all_file_names.append(cloudstorage.stat(('/%s/%s') %
                                                  (bucket, file_name)))
         except cloudstorage.NotFoundError:
-          logging.warning('File /%s/%s may have been removed. Skipping file.',
+          log.warning('File /%s/%s may have been removed. Skipping file.',
             bucket, file_name)
 
     shard_count = min(cls._MAX_SHARD_COUNT, mapper_spec.shard_count)
@@ -3539,7 +3541,7 @@ class GoogleCloudStorageZipLineInputReader(InputReader):
       # pylint: disable=star-args
       self._reader = cloudstorage.open(file_name, **options)
     except cloudstorage.NotFoundError:
-      logging.warning('File /%s may have been removed. Skipping file.',
+      log.warning('File /%s may have been removed. Skipping file.',
             file_name)
     self._zip = None
     self._entries = None

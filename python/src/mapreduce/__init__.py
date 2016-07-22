@@ -17,6 +17,7 @@
 import logging
 import os
 
+log = logging.getLogger(__name__)
 version = os.environ.get('CURRENT_VERSION_ID', '').split('.')[0]
 
 if (__name__ == 'google.appengine.ext.mapreduce'
@@ -26,5 +27,5 @@ if (__name__ == 'google.appengine.ext.mapreduce'
          ' https://pypi.python.org/pypi/GoogleAppEngineMapReduce or use the '
          'source at https://github.com/GoogleCloudPlatform/appengine-mapreduce '
          'instead.')
-  logging.warn(msg)
+  log.warn(msg)
 

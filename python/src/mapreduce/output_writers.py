@@ -52,6 +52,8 @@ from mapreduce import operation
 from mapreduce import records
 from mapreduce import shard_life_cycle
 
+log = logging.getLogger(__name__)
+
 # TODO(user): Cleanup imports if/when cloudstorage becomes part of runtime.
 try:
   # Check if the full cloudstorage package exists. The stub part is in runtime.
@@ -1160,14 +1162,14 @@ class _GoogleCloudStorageKeyValueOutputWriter(
 
   def write(self, data):
     if len(data) != 2:
-      logging.error("Got bad tuple of length %d (2-tuple expected): %s",
+      log.error("Got bad tuple of length %d (2-tuple expected): %s",
                     len(data), data)
 
     try:
       key = str(data[0])
       value = str(data[1])
     except TypeError:
-      logging.error("Expecting a tuple, but got %s: %s",
+      log.error("Expecting a tuple, but got %s: %s",
                     data.__class__.__name__, data)
 
     proto = kv_pb.KeyValue()

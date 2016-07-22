@@ -31,6 +31,7 @@ from mapreduce import errors
 from mapreduce import records
 from mapreduce.api import map_job
 
+log = logging.getLogger(__name__)
 
 # pylint: disable=g-import-not-at-top
 # TODO(user): Cleanup imports if/when cloudstorage becomes part of runtime.
@@ -320,7 +321,7 @@ class GCSInputReader(map_job.InputReader):
         self._slice_ctx.incr(self.COUNTER_FILE_READ)
         return handle
       except cloudstorage.NotFoundError:
-        logging.warning("File %s may have been removed. Skipping file.",
+        log.warning("File %s may have been removed. Skipping file.",
                         filename)
         self._slice_ctx.incr(self.COUNTER_FILE_MISSING)
 

@@ -15,7 +15,6 @@
 
 """Cloudstorage stub."""
 import os
-import re
 import logging
 import types
 import itertools
@@ -24,6 +23,7 @@ from cloudstorage import storage_api
 from cloudstorage import errors
 from cloudstorage import common
 
+log = logging.getLogger(__name__)
 # pylint: disable=too-many-locals, too-many-branches, too-many-statements
 def compose(list_of_files, destination_file, files_metadata=None,
             content_type=None, retry_params=None, _account_id=None):
@@ -46,7 +46,7 @@ def compose(list_of_files, destination_file, files_metadata=None,
     ValueError: If the number of files is outside the range of 2-32.
   """
   
-  logging.warn('Warning the cloudstorage libbrary is out of date and does'
+  log.warn('Warning the cloudstorage libbrary is out of date and does'
                ' not have the needed library. Currently running an out of '
                'date stub. Please update your cloudstorage library.')
   api = storage_api._get_storage_api(retry_params=retry_params,
@@ -131,11 +131,11 @@ def _validate_compose_list(destination_file, file_list,
     if not isinstance(source_file, basestring):
       raise TypeError('Each item of file_list must be a string')
     if source_file.startswith('/'):
-      logging.warn('Detected a "/" at the start of the file, '
+      log.warn('Detected a "/" at the start of the file, '
                    'Unless the file name contains a "/" it '
                    ' may cause files to be misread')
     if source_file.startswith(bucket):
-      logging.warn('Detected bucket name at the start of the file, '
+      log.warn('Detected bucket name at the start of the file, '
                    'must not specify the bucket when listing file_names.'
                    ' May cause files to be misread')
     common.validate_file_path(bucket + source_file)

@@ -48,6 +48,8 @@ from mapreduce import pipeline_base
 from mapreduce import records
 from mapreduce import util
 
+log = logging.getLogger(__name__)
+
 # pylint: disable=g-import-not-at-top
 # TODO(user): Cleanup imports if/when cloudstorage becomes part of runtime.
 try:
@@ -135,16 +137,16 @@ def _sort_records_map(records):
   l = len(records)
   key_records = [None] * l
 
-  logging.debug("Parsing")
+  log.debug("Parsing")
   for i in range(l):
     proto = kv_pb.KeyValue()
     proto.ParseFromString(records[i])
     key_records[i] = (proto.key(), records[i])
 
-  logging.debug("Sorting")
+  log.debug("Sorting")
   key_records.sort(cmp=_compare_keys)
 
-  logging.debug("Writing")
+  log.debug("Writing")
   mapper_spec = ctx.mapreduce_spec.mapper
   params = input_readers._get_params(mapper_spec)
   bucket_name = params.get("bucket_name")
@@ -156,7 +158,7 @@ def _sort_records_map(records):
     for key_record in key_records:
       pool.append(key_record[1])
 
-  logging.debug("Finalizing")
+  log.debug("Finalizing")
   filehandle.close()
 
   entity = _OutputFile(key_name=full_filename,
@@ -515,14 +517,14 @@ class _HashingGCSOutputWriter(output_writers.OutputWriter):
     """
     ctx = context.get()
     if len(data) != 2:
-      logging.error("Got bad tuple of length %d (2-tuple expected): %s",
+      log.error("Got bad tuple of length %d (2-tuple expected): %s",
                     len(data), data)
 
     try:
       key = str(data[0])
       value = str(data[1])
     except TypeError:
-      logging.error("Expecting a tuple, but got %s: %s",
+      log.error("Expecting a tuple, but got %s: %s",
                     data.__class__.__name__, data)
 
     file_index = key.__hash__() % len(self._filehandles)

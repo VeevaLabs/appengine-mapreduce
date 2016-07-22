@@ -27,6 +27,8 @@ from google.appengine.api import datastore_types
 from google.appengine.ext import db
 from google.appengine.ext import ndb
 
+log = logging.getLogger(__name__)
+
 # pylint: disable=invalid-name
 
 
@@ -142,7 +144,7 @@ class JsonMixin(object):
     try:
       return json.dumps(_json, sort_keys=True, cls=JsonEncoder)
     except:
-      logging.exception("Could not serialize JSON: %r", _json)
+      log.exception("Could not serialize JSON: %r", _json)
       raise
 
   @classmethod

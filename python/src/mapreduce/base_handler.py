@@ -26,6 +26,7 @@ import importlib
 import logging
 import pkgutil
 
+log = logging.getLogger(__name__)
 try:
   import json
 except ImportError:
@@ -107,15 +108,15 @@ class TaskQueueHandler(webapp.RequestHandler):
 
     # Check request is from taskqueue.
     if "X-AppEngine-QueueName" not in self.request.headers:
-      logging.error(self.request.headers)
-      logging.error("Task queue handler received non-task queue request")
+      log.error(self.request.headers)
+      log.error("Task queue handler received non-task queue request")
       self.response.set_status(
           403, message="Task queue handler received non-task queue request")
       return
 
     # Check task has not been retried too many times.
     if self.task_retry_count() + 1 > parameters.config.TASK_MAX_ATTEMPTS:
-      logging.error(
+      log.error(
           "Task %s has been attempted %s times. Dropping it permanently.",
           self.request.headers["X-AppEngine-TaskName"],
           self.task_retry_count() + 1)
@@ -128,7 +129,7 @@ class TaskQueueHandler(webapp.RequestHandler):
     # pylint: disable=bare-except
     except:
       self._preprocess_success = False
-      logging.error(
+      log.error(
           "Preprocess task %s failed. Dropping it permanently.",
           self.request.headers["X-AppEngine-TaskName"])
       self._drop_gracefully()
@@ -208,7 +209,7 @@ class JsonHandler(webapp.RequestHandler):
   def _handle_wrapper(self):
     """The helper method for handling JSON Post and Get requests."""
     if self.request.headers.get("X-Requested-With") != "XMLHttpRequest":
-      logging.error("Got JSON request with no X-Requested-With header")
+      log.error("Got JSON request with no X-Requested-With header")
       self.response.set_status(
           403, message="Got JSON request with no X-Requested-With header")
       return
@@ -217,12 +218,12 @@ class JsonHandler(webapp.RequestHandler):
     try:
       self.handle()
     except errors.MissingYamlError:
-      logging.debug("Could not find 'mapreduce.yaml' file.")
+      log.debug("Could not find 'mapreduce.yaml' file.")
       self.json_response.clear()
       self.json_response["error_class"] = "Notice"
       self.json_response["error_message"] = "Could not find 'mapreduce.yaml'"
     except Exception, e:
-      logging.exception("Error in JsonHandler, returning exception.")
+      log.exception("Error in JsonHandler, returning exception.")
       # TODO(user): Include full traceback here for the end-user.
       self.json_response.clear()
       self.json_response["error_class"] = e.__class__.__name__
@@ -233,7 +234,7 @@ class JsonHandler(webapp.RequestHandler):
       output = json.dumps(self.json_response, cls=json_util.JsonEncoder)
     # pylint: disable=broad-except
     except Exception, e:
-      logging.exception("Could not serialize to JSON")
+      log.exception("Could not serialize to JSON")
       self.response.set_status(500, message="Could not serialize to JSON")
       return
     else:

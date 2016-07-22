@@ -33,6 +33,7 @@ from mapreduce import parameters
 from mapreduce import util
 from mapreduce.api import map_job
 
+log = logging.getLogger(__name__)
 
 def start_map(name,
               handler_spec,
@@ -108,7 +109,7 @@ def start_map(name,
                                  output_writer_spec=output_writer_spec)
 
   if in_xg_transaction and not db.is_in_transaction():
-    logging.warning("Expects an opened xg transaction to start mapreduce "
+    log.warning("Expects an opened xg transaction to start mapreduce "
                     "when transactional is True.")
 
   return handlers.StartJobHandler._start_map(

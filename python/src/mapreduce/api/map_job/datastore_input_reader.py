@@ -19,6 +19,7 @@ from mapreduce import datastore_range_iterators as db_iters
 from mapreduce import errors
 from mapreduce.api.map_job import abstract_datastore_input_reader
 
+log = logging.getLogger(__name__)
 # pylint: disable=invalid-name
 
 
@@ -36,7 +37,7 @@ class DatastoreInputReader(abstract_datastore_input_reader
     entity_kind = params[cls.ENTITY_KIND_PARAM]
     # Check for a "." in the entity kind.
     if "." in entity_kind:
-      logging.warning(
+      log.warning(
           ". detected in entity kind %s specified for reader %s."
           "Assuming entity kind contains the dot.",
           entity_kind, cls.__name__)

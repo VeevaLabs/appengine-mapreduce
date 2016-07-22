@@ -57,6 +57,7 @@ from mapreduce import util
 from mapreduce.api import map_job
 from google.appengine.runtime import apiproxy_errors
 
+log = logging.getLogger(__name__)
 # pylint: disable=g-import-not-at-top
 try:
   import cloudstorage
@@ -173,31 +174,31 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
     """
     # Controller will tally shard_states and properly handle the situation.
     if not shard_state:
-      logging.warning("State not found for shard %s; Possible spurious task "
+      log.warning("State not found for shard %s; Possible spurious task "
                       "execution. Dropping this task.",
                       tstate.shard_id)
       return self._TASK_DIRECTIVE.DROP_TASK
 
     if not shard_state.active:
-      logging.warning("Shard %s is not active. Possible spurious task "
+      log.warning("Shard %s is not active. Possible spurious task "
                       "execution. Dropping this task.", tstate.shard_id)
-      logging.warning(str(shard_state))
+      log.warning(str(shard_state))
       return self._TASK_DIRECTIVE.DROP_TASK
 
     # Validate shard retry count.
     if shard_state.retries > tstate.retries:
-      logging.warning(
+      log.warning(
           "Got shard %s from previous shard retry %s. Possible spurious "
           "task execution. Dropping this task.",
           tstate.shard_id,
           tstate.retries)
-      logging.warning(str(shard_state))
+      log.warning(str(shard_state))
       return self._TASK_DIRECTIVE.DROP_TASK
     elif shard_state.retries < tstate.retries:
       # By the end of last slice, task enqueue succeeded but datastore commit
       # failed. That transaction will be retried and adding the same task
       # will pass.
-      logging.warning(
+      log.warning(
           "ShardState for %s is behind slice. Waiting for it to catch up",
           shard_state.shard_id)
       return self._TASK_DIRECTIVE.RETRY_TASK
@@ -205,7 +206,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
     # Validate slice id.
     # Taskqueue executes old successful tasks.
     if shard_state.slice_id > tstate.slice_id:
-      logging.warning(
+      log.warning(
           "Task %s-%s is behind ShardState %s. Dropping task.""",
           tstate.shard_id, tstate.slice_id, shard_state.slice_id)
       return self._TASK_DIRECTIVE.DROP_TASK
@@ -213,7 +214,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
     # failed. That transaction will be retried and adding the same task
     # will pass. User data is duplicated in this case.
     elif shard_state.slice_id < tstate.slice_id:
-      logging.warning(
+      log.warning(
           "Task %s-%s is ahead of ShardState %s. Waiting for it to catch up.",
           tstate.shard_id, tstate.slice_id, shard_state.slice_id)
       return self._TASK_DIRECTIVE.RETRY_TASK
@@ -224,7 +225,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
       countdown = self._wait_time(shard_state,
                                   parameters._LEASE_DURATION_SEC)
       if countdown > 0:
-        logging.warning(
+        log.warning(
             "Last retry of slice %s-%s may be still running."
             "Will try again in %s seconds", tstate.shard_id, tstate.slice_id,
             countdown)
@@ -238,13 +239,13 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
         if self._wait_time(shard_state,
                            parameters._MAX_LEASE_DURATION_SEC):
           if not self._has_old_request_ended(shard_state):
-            logging.warning(
+            log.warning(
                 "Last retry of slice %s-%s is still in flight with request_id "
                 "%s. Will try again later.", tstate.shard_id, tstate.slice_id,
                 shard_state.slice_request_id)
             return self._TASK_DIRECTIVE.RETRY_TASK
         else:
-          logging.warning(
+          log.warning(
               "Last retry of slice %s-%s has no log entry and has"
               "timed out after %s seconds",
               tstate.shard_id, tstate.slice_id,
@@ -267,7 +268,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
       """
       fresh_state = model.ShardState.get_by_shard_id(tstate.shard_id)
       if not fresh_state:
-        logging.warning("ShardState missing.")
+        log.warning("ShardState missing.")
         raise db.Rollback()
       if (fresh_state.active and
           fresh_state.slice_id == shard_state.slice_id and
@@ -278,7 +279,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
         shard_state.put(config=config)
         return self._TASK_DIRECTIVE.PROCEED_TASK
       else:
-        logging.warning(
+        log.warning(
             "Contention on slice %s-%s execution. Will retry again.",
             tstate.shard_id, tstate.slice_id)
         # One proposer should win. In case all lost, back off arbitrarily.
@@ -307,7 +308,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
         apiproxy_errors.CapabilityDisabledError) as e:
       # Managed VMs do not have access to the logservice API
       # See https://groups.google.com/forum/#!topic/app-engine-managed-vms/r8i65uiFW0w
-      logging.warning("Ignoring exception: %s", e)
+      log.warning("Ignoring exception: %s", e)
 
     if not logs or not logs[0].finished:
       return False
@@ -370,8 +371,8 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
       _tx()
     # pylint: disable=broad-except
     except Exception, e:
-      logging.warning(e)
-      logging.warning(
+      log.warning(e)
+      log.warning(
           "Release lock for shard %s failed. Wait for lease to expire.",
           shard_state.shard_id)
 
@@ -513,12 +514,12 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
         shard_state.set_input_finished()
     # pylint: disable=broad-except
     except Exception, e:
-      logging.warning("Shard %s got error.", shard_state.shard_id)
-      logging.error(traceback.format_exc())
+      log.warning("Shard %s got error.", shard_state.shard_id)
+      log.error(traceback.format_exc())
 
       # Fail fast.
       if type(e) is errors.FailJobError:
-        logging.error("Got FailJobError.")
+        log.error("Got FailJobError.")
         task_directive = self._TASK_DIRECTIVE.FAIL_TASK
       else:
         task_directive = self._TASK_DIRECTIVE.RETRY_SLICE
@@ -638,7 +639,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
             else:
               output_writer = transient_shard_state.output_writer
               if not output_writer:
-                logging.warning(
+                log.warning(
                     "Handler yielded %s, but no output writer is set.", output)
               else:
                 output_writer.write(output)
@@ -718,19 +719,19 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
       # Set HTTP code to 500.
       return self.retry_task()
     elif task_directive == self._TASK_DIRECTIVE.ABORT_SHARD:
-      logging.info("Aborting shard %d of job '%s'",
+      log.info("Aborting shard %d of job '%s'",
                    shard_state.shard_number, shard_state.mapreduce_id)
       task = None
     elif task_directive == self._TASK_DIRECTIVE.FAIL_TASK:
-      logging.critical("Shard %s failed permanently.", shard_state.shard_id)
+      log.critical("Shard %s failed permanently.", shard_state.shard_id)
       task = None
     elif task_directive == self._TASK_DIRECTIVE.RETRY_SHARD:
-      logging.warning("Shard %s is going to be attempted for the %s time.",
+      log.warning("Shard %s is going to be attempted for the %s time.",
                       shard_state.shard_id,
                       shard_state.retries + 1)
       task = self._state_to_task(tstate, shard_state)
     elif task_directive == self._TASK_DIRECTIVE.RECOVER_SLICE:
-      logging.warning("Shard %s slice %s is being recovered.",
+      log.warning("Shard %s slice %s is being recovered.",
                       shard_state.shard_id,
                       shard_state.slice_id)
       task = self._state_to_task(tstate, shard_state)
@@ -754,10 +755,10 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
         raise db.Rollback()
       if (not fresh_shard_state.active or
           "worker_active_state_collision" in _TEST_INJECTED_FAULTS):
-        logging.warning("Shard %s is not active. Possible spurious task "
+        log.warning("Shard %s is not active. Possible spurious task "
                         "execution. Dropping this task.", tstate.shard_id)
-        logging.warning("Datastore's %s", str(fresh_shard_state))
-        logging.warning("Slice's %s", str(shard_state))
+        log.warning("Datastore's %s", str(fresh_shard_state))
+        log.warning("Slice's %s", str(shard_state))
         return
       fresh_shard_state.copy_from(shard_state)
       fresh_shard_state.put(config=config)
@@ -776,7 +777,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
             taskqueue.Error,
             runtime.DeadlineExceededError,
             apiproxy_errors.Error), e:
-      logging.warning(
+      log.warning(
           "Can't transactionally continue shard. "
           "Will retry slice %s %s for the %s time.",
           tstate.shard_id,
@@ -841,18 +842,18 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
     shard_attempts = shard_state.retries + 1
 
     if shard_attempts >= parameters.config.SHARD_MAX_ATTEMPTS:
-      logging.warning(
+      log.warning(
           "Shard attempt %s exceeded %s max attempts.",
           shard_attempts, parameters.config.SHARD_MAX_ATTEMPTS)
       return self._TASK_DIRECTIVE.FAIL_TASK
     if tstate.output_writer and (
         not tstate.output_writer._supports_shard_retry(tstate)):
-      logging.warning("Output writer %s does not support shard retry.",
+      log.warning("Output writer %s does not support shard retry.",
                       tstate.output_writer.__class__.__name__)
       return self._TASK_DIRECTIVE.FAIL_TASK
 
     shard_state.reset_for_retry()
-    logging.warning("Shard %s attempt %s failed with up to %s attempts.",
+    log.warning("Shard %s attempt %s failed with up to %s attempts.",
                     shard_state.shard_id,
                     shard_state.retries,
                     parameters.config.SHARD_MAX_ATTEMPTS)
@@ -878,7 +879,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
     """
     if (shard_state.slice_retries + 1 <
         parameters.config.TASK_MAX_DATA_PROCESSING_ATTEMPTS):
-      logging.warning(
+      log.warning(
           "Slice %s %s failed for the %s of up to %s attempts "
           "(%s of %s taskqueue execution attempts). "
           "Will retry now.",
@@ -896,7 +897,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
       return self._TASK_DIRECTIVE.RETRY_SLICE
 
     if parameters.config.TASK_MAX_DATA_PROCESSING_ATTEMPTS > 0:
-      logging.warning("Slice attempt %s exceeded %s max attempts.",
+      log.warning("Slice attempt %s exceeded %s max attempts.",
                       self.task_retry_count() + 1,
                       parameters.config.TASK_MAX_DATA_PROCESSING_ATTEMPTS)
     return self._TASK_DIRECTIVE.RETRY_SHARD
@@ -1000,7 +1001,7 @@ class MapperWorkerCallbackHandler(base_handler.HugeTaskHandler):
         worker_task.add(queue_name)
       except (taskqueue.TombstonedTaskError,
               taskqueue.TaskAlreadyExistsError), e:
-        logging.warning("Task %r already exists. %s: %s",
+        log.warning("Task %r already exists. %s: %s",
                         worker_task.name,
                         e.__class__,
                         e)
@@ -1107,11 +1108,11 @@ class ControllerCallbackHandler(base_handler.HugeTaskHandler):
     ])
 
     if not state:
-      logging.warning("State not found for MR '%s'; dropping controller task.",
+      log.warning("State not found for MR '%s'; dropping controller task.",
                       spec.mapreduce_id)
       return
     if not state.active:
-      logging.warning(
+      log.warning(
           "MR %r is not active. Looks like spurious controller task execution.",
           spec.mapreduce_id)
       self._clean_up_mr(spec)
@@ -1166,7 +1167,7 @@ class ControllerCallbackHandler(base_handler.HugeTaskHandler):
     spec = state.mapreduce_spec
 
     if total_shards != spec.mapper.shard_count:
-      logging.error("Found %d shard states. Expect %d. "
+      log.error("Found %d shard states. Expect %d. "
                     "Issuing abort command to job '%s'",
                     total_shards, spec.mapper.shard_count,
                     spec.mapreduce_id)
@@ -1200,7 +1201,7 @@ class ControllerCallbackHandler(base_handler.HugeTaskHandler):
         # We don't check anything other than active because we are only
         # updating stats. It's OK if they are briefly inconsistent.
         if not fresh_state.active:
-          logging.warning(
+          log.warning(
               "Job %s is not active. Looks like spurious task execution. "
               "Dropping controller task.", spec.mapreduce_id)
           return
@@ -1260,7 +1261,7 @@ class ControllerCallbackHandler(base_handler.HugeTaskHandler):
       fresh_state = model.MapreduceState.get_by_job_id(
           mapreduce_spec.mapreduce_id)
       if not fresh_state.active:
-        logging.warning(
+        log.warning(
             "Job %s is not active. Looks like spurious task execution. "
             "Dropping task.", mapreduce_spec.mapreduce_id)
         return
@@ -1274,7 +1275,7 @@ class ControllerCallbackHandler(base_handler.HugeTaskHandler):
         done_task.add(queue_name, transactional=True)
 
     _put_state()
-    logging.info("Final result for job '%s' is '%s'",
+    log.info("Final result for job '%s' is '%s'",
                  mapreduce_spec.mapreduce_id, mapreduce_state.result_status)
     cls._clean_up_mr(mapreduce_spec)
 
@@ -1353,7 +1354,7 @@ class ControllerCallbackHandler(base_handler.HugeTaskHandler):
         controller_callback_task.add(queue_name)
       except (taskqueue.TombstonedTaskError,
               taskqueue.TaskAlreadyExistsError), e:
-        logging.warning("Task %r with params %r already exists. %s: %s",
+        log.warning("Task %r with params %r already exists. %s: %s",
                         task_name, task_params, e.__class__, e)
 
 
@@ -1378,7 +1379,7 @@ class KickOffJobHandler(base_handler.TaskQueueHandler):
     # Get and verify mr state.
     mr_id = self.request.get("mapreduce_id")
     # Log the mr_id since this is started in an unnamed task
-    logging.info("Processing kickoff for job %s", mr_id)
+    log.info("Processing kickoff for job %s", mr_id)
     state = model.MapreduceState.get_by_job_id(mr_id)
     if not self._check_mr_state(state, mr_id):
       return
@@ -1387,7 +1388,7 @@ class KickOffJobHandler(base_handler.TaskQueueHandler):
     readers, serialized_readers_entity = self._get_input_readers(state)
     if readers is None:
       # We don't have any data. Finish map.
-      logging.warning("Found no mapper input data to process.")
+      log.warning("Found no mapper input data to process.")
       state.active = False
       state.result_status = model.MapreduceState.RESULT_SUCCESS
       ControllerCallbackHandler._finalize_job(
@@ -1417,7 +1418,7 @@ class KickOffJobHandler(base_handler.TaskQueueHandler):
   def _drop_gracefully(self):
     """See parent."""
     mr_id = self.request.get("mapreduce_id")
-    logging.error("Failed to kick off job %s", mr_id)
+    log.error("Failed to kick off job %s", mr_id)
 
     state = model.MapreduceState.get_by_job_id(mr_id)
     if not self._check_mr_state(state, mr_id):
@@ -1504,7 +1505,7 @@ class KickOffJobHandler(base_handler.TaskQueueHandler):
     if not self._check_mr_state(fresh_state, mr_id):
       return False
     if fresh_state.active_shards != 0:
-      logging.warning(
+      log.warning(
           "Mapreduce %s already has active shards. Looks like spurious task "
           "execution.", mr_id)
       return None
@@ -1590,12 +1591,12 @@ class KickOffJobHandler(base_handler.TaskQueueHandler):
       True if state is valid. False if not and this task should be dropped.
     """
     if state is None:
-      logging.warning(
+      log.warning(
           "Mapreduce State for job %s is missing. Dropping Task.",
           mr_id)
       return False
     if not state.active:
-      logging.warning(
+      log.warning(
           "Mapreduce %s is not active. Looks like spurious task "
           "execution. Dropping Task.", mr_id)
       return False
@@ -1851,7 +1852,7 @@ class FinalizeJobHandler(base_handler.TaskQueueHandler):
         finalize_task.add(queue_name)
       except (taskqueue.TombstonedTaskError,
               taskqueue.TaskAlreadyExistsError), e:
-        logging.warning("Task %r already exists. %s: %s",
+        log.warning("Task %r already exists. %s: %s",
                         task_name, e.__class__, e)
 
 

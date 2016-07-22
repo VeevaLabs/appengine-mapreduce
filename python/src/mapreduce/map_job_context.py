@@ -16,6 +16,8 @@
 
 import logging
 
+log = logging.getLogger(__name__)
+
 # pylint: disable=invalid-name
 
 
@@ -123,6 +125,6 @@ class SliceContext(object):
       value: a value of type expected by the output writer.
     """
     if not self._tstate.output_writer:
-      logging.error("emit is called, but no output writer is set.")
+      log.error("emit is called, but no output writer is set.")
       return
     self._tstate.output_writer.write(value)

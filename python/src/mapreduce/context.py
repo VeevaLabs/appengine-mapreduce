@@ -36,6 +36,7 @@ import heapq
 import logging
 import threading
 
+log = logging.getLogger(__name__)
 try:
   from google.appengine.ext import ndb
 except ImportError:
@@ -155,8 +156,8 @@ class _ItemList(object):
         self.clear()
         break
       except db.Timeout, e:
-        logging.warning(e)
-        logging.warning("Flushing '%s' timed out. Will retry for the %s time.",
+        log.warning(e)
+        log.warning("Flushing '%s' timed out. Will retry for the %s time.",
                         self, retry)
         retry += 1
         options["deadline"] *= 2
@@ -168,7 +169,7 @@ class _ItemList(object):
 
   def _log_largest_items(self):
     if not self.__repr_function:
-      logging.error("Got RequestTooLargeError but can't interpret items in "
+      log.error("Got RequestTooLargeError but can't interpret items in "
                     "_ItemList %s.", self)
       return
 
@@ -178,7 +179,7 @@ class _ItemList(object):
                              lambda t: t[0])
     # Set field for for test only.
     self._largest = [(s, self.__repr_function(i)) for s, i in largest]
-    logging.error("Got RequestTooLargeError. Largest items: %r", self._largest)
+    log.error("Got RequestTooLargeError. Largest items: %r", self._largest)
 
   def clear(self):
     """Clear item list."""
@@ -323,12 +324,14 @@ class _MutationPool(Pool):
   def _flush_ndb_puts(self, items, options):
     """Flush all NDB puts to datastore."""
     assert ndb is not None
-    ndb.put_multi(items, config=self._create_config(options))
+    ndb.put_multi(items, config=self._create_config(options),
+                  use_memcache=True)
 
   def _flush_ndb_deletes(self, items, options):
     """Flush all deletes to datastore."""
     assert ndb is not None
-    ndb.delete_multi(items, config=self._create_config(options))
+    ndb.delete_multi(items, config=self._create_config(options),
+                     use_memcache=True)
 
   def _create_config(self, options):
     """Creates datastore Config.
